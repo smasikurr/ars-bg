@@ -8,7 +8,7 @@
  * 4. Microstock 300 DPI High-Resolution PNG & Pure Vector SVG export.
  */
 
-import { downloadBlob } from "@/lib/utils"
+import { downloadBlob, getExportTimestamp } from "@/lib/utils"
 import { injectPngDpi } from "@/lib/export/dpi"
 
 export interface PatternPreset {
@@ -244,7 +244,8 @@ export function downloadPatternSVG(
 ) {
   const svg = buildPatternSVG(config, width, height)
   const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" })
-  downloadBlob(blob, `ars-pattern-${config.preset}-${width}x${height}.svg`)
+  const ts = getExportTimestamp()
+  downloadBlob(blob, `ARS_BG_PATTERN_${config.preset.toUpperCase()}_${width}x${height}_${ts}.svg`)
 }
 
 /**
@@ -282,7 +283,8 @@ export async function downloadPatternPNG(
         const arrayBuf = await blob.arrayBuffer()
         const with300Dpi = injectPngDpi(new Uint8Array(arrayBuf), 300)
         const finalBlob = new Blob([with300Dpi as any], { type: "image/png" })
-        downloadBlob(finalBlob, `ars-pattern-${config.preset}-${width}x${height}-300dpi.png`)
+        const ts = getExportTimestamp()
+        downloadBlob(finalBlob, `ARS_BG_PATTERN_${config.preset.toUpperCase()}_${width}x${height}_${ts}.png`)
         resolve()
       }, "image/png")
     }

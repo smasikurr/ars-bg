@@ -2,6 +2,7 @@ import { renderToCanvas } from "@/lib/engine/renderer"
 import type { Doc } from "@/lib/engine/types"
 import { drawOverlay, hasOverlay } from "@/lib/overlay"
 import { setDpiOnBlob } from "./dpi"
+import { getExportTimestamp } from "@/lib/utils"
 
 export type ImageFormat = "png" | "jpeg" | "webp"
 
@@ -59,8 +60,11 @@ export async function toBlob(
   return setDpiOnBlob(rawBlob, dpi)
 }
 
-export const fileName = (doc: Doc, w: number, h: number, ext: string) =>
-  `ars-bg-${(doc.name || "gradient").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${w}x${h}.${ext}`
+export const fileName = (doc: Doc, w: number, h: number, ext: string) => {
+  const ts = getExportTimestamp()
+  const cleanName = (doc.name || doc.style || "GRADIENT").toUpperCase().replace(/[^A-Z0-9]+/g, "-")
+  return `ARS_BG_${cleanName}_${w}x${h}_${ts}.${ext}`
+}
 
 /** Copies a PNG. The promise goes straight into ClipboardItem for Safari. */
 export async function copyImage(doc: Doc, phase: number) {

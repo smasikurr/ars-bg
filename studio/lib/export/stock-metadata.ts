@@ -109,6 +109,74 @@ export function generateStockMetadata(doc: Doc, index: number, total: number, fi
 }
 
 /**
+ * Generates Adobe Stock / Shutterstock metadata tailored for Theme 2 (Matrix / Procedural / SDF)
+ */
+export function generateTheme2StockMetadata(
+  config: { flowType: number; colors: string[]; artEnable?: boolean },
+  index: number,
+  total: number,
+  filename: string
+): StockMetadata {
+  const ALGO_NAMES: Record<number, string> = {
+    0: 'Sin-Cos Fluid Flow',
+    1: 'Smooth Simplex Noise',
+    2: 'Fractal FBM Marbled',
+    3: 'Domain Warp Liquid',
+    4: 'Curl Noise Vortex',
+    5: 'Polar Cosmic Vortex',
+    6: 'Linear Stratified Waves',
+    7: 'Radial Topography Rings',
+    8: 'Conic Prismatic Sweep',
+    9: 'Diffusion Fluid Organic',
+    10: 'Procedural SDF Diffusion',
+    11: 'Nested SDF Core Glow',
+    12: '3D Liquid Volumetric Depth',
+  };
+
+  const algoName = ALGO_NAMES[config.flowType] || 'Procedural Flow';
+  const title = `Abstract Theme 2 Matrix ${algoName} Fluid Gradient Background with High Resolution 300 DPI #${index + 1}`;
+  const description = `Ultra high-resolution procedural ${algoName.toLowerCase()} gradient background rendered with OKLab color fidelity, generative organic curves, and ample copy space for futuristic web headers, UI backdrops, and branding.`;
+
+  const dynamicKeywords = new Set<string>([
+    ...BASE_STOCK_KEYWORDS,
+    'theme 2',
+    'matrix background',
+    'procedural shader',
+    'generative art',
+    'oklab color',
+    'liquid gradient',
+    'webgl shader',
+    '3d liquid',
+    'topography',
+    'cyberpunk aesthetic',
+    'organic flow',
+    'modern ui background',
+    'dynamic waves',
+    'chroma smooth',
+    'futuristic backdrop',
+    '300 dpi print ready',
+    `asset ${index + 1}`,
+  ]);
+
+  if (config.artEnable) {
+    dynamicKeywords.add('halftone pattern');
+    dynamicKeywords.add('dither art');
+    dynamicKeywords.add('dot matrix');
+    dynamicKeywords.add('raster pattern');
+  }
+
+  const finalKeywords = Array.from(dynamicKeywords).slice(0, 50);
+
+  return {
+    filename,
+    title,
+    description,
+    keywords: finalKeywords,
+    category: 'Abstract / Backgrounds',
+  };
+}
+
+/**
  * Compiles a CSV string formatted for Adobe Stock Contributor CSV Bulk Upload
  */
 export function buildAdobeStockCsv(records: StockMetadata[]): string {

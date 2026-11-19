@@ -15,7 +15,7 @@ import { exportPack } from "@/lib/export/pack"
 import { canEncodeVideo, exportVideo, loopsFor } from "@/lib/export/video"
 import { hasOverlay } from "@/lib/overlay"
 import { ALL_SIZES, PACK } from "@/lib/sizes"
-import { cn, downloadBlob } from "@/lib/utils"
+import { cn, downloadBlob, getExportTimestamp } from "@/lib/utils"
 import { useClientValue } from "@/hooks/use-media"
 import { useStudio } from "@/store/studio"
 import { Button } from "@/components/ui/button"
@@ -243,9 +243,10 @@ function VideoPane() {
                 onProgress: setProgress,
                 signal: abort.current.signal,
               })
+              const ts = getExportTimestamp()
               downloadBlob(
                 blob,
-                `ars-bg-${(doc.name || "loop").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${seconds}s.mp4`
+                `ARS-BG-${(doc.name || "LOOP").toUpperCase()}_${seconds}s_${ts}.mp4`
               )
               toast("Video ready")
             } catch (e) {
@@ -336,9 +337,10 @@ function PackPane() {
               const blob = await exportPack(doc, ids, clock.phase, (d, t) =>
                 setProgress(d / t)
               )
+              const ts = getExportTimestamp()
               downloadBlob(
                 blob,
-                `ars-bg-${(doc.name || "wallpapers").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-pack.zip`
+                `ARS-BG-PACK-${ids.length}-WALLPAPERS_${ts}.zip`
               )
               toast(`${ids.length} wallpapers ready`)
             } catch (e) {
@@ -524,19 +526,29 @@ function BulkStockPane() {
             abort.current = new AbortController()
             setProgress({ done: 0, total: count, msg: "Initializing..." })
             try {
-              const doc = useStudio.getState().doc
+              const state = useStudio.getState()
+              const doc = state.doc
+              const studioMode = state.studioMode
+              const theme2Config = state.theme2
+              const timestamp = getExportTimestamp()
+
               const blob = await executeBulkExport(doc, {
                 count,
                 width: w,
                 height: h,
                 quality: 0.98,
                 mode,
+                studioMode,
+                theme2Config,
+                timestamp,
                 onProgress: (d, t, m) => setProgress({ done: d, total: t, msg: m }),
                 signal: abort.current.signal,
               })
+
+              const prefix = studioMode === "theme2" ? "ARS-BG-THEME2-BULK" : "ARS-BG-PRO-BULK"
               downloadBlob(
                 blob,
-                `ARS-BG-PRO-BULK-${count}-ASSETS-${w}x${h}.zip`
+                `${prefix}-${count}-ASSETS_${w}x${h}_${timestamp}.zip`
               )
               toast(`Export complete: ${count} unique assets + SEO CSV zipped!`)
             } catch (e) {

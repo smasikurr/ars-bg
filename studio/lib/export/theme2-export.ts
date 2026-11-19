@@ -1,7 +1,7 @@
 "use client"
 
 import { useStudio } from "@/store/studio"
-import { downloadBlob } from "@/lib/utils"
+import { downloadBlob, getExportTimestamp } from "@/lib/utils"
 import { toast } from "@/components/ui/toast"
 import { setDpiOnBlob } from "./dpi"
 
@@ -48,7 +48,8 @@ export async function downloadTheme2PNG(scale = 1): Promise<void> {
     )
     if (!rawBlob) throw new Error("Failed to generate PNG blob")
     const blob = await setDpiOnBlob(rawBlob, 300)
-    const filename = `ars-bg-theme2-${Date.now()}-${canvas.width}x${canvas.height}.png`
+    const ts = getExportTimestamp()
+    const filename = `ARS_BG_THEME2_${canvas.width}x${canvas.height}_${ts}.png`
     downloadBlob(blob, filename)
     toast(`Downloaded PNG (${canvas.width}×${canvas.height})`, "ok")
   } catch (err: any) {

@@ -11,7 +11,7 @@ import {
 } from "@/lib/export/image"
 import { extractPalette, readFile } from "@/lib/extract"
 import { shareUrl } from "@/lib/share"
-import { downloadBlob } from "@/lib/utils"
+import { downloadBlob, getExportTimestamp } from "@/lib/utils"
 import { useStudio } from "@/store/studio"
 import { toast } from "@/components/ui/toast"
 
@@ -44,13 +44,14 @@ export async function downloadImage(
   scale: number,
   quality = 0.92
 ) {
+  const ts = getExportTimestamp()
   if (useStudio.getState().studioMode === "theme2") {
     const { captureTheme2Canvas } = await import("@/lib/export/theme2-export")
     const canvas = await captureTheme2Canvas(scale)
     const blob = await toBlob(canvas, format, quality)
     downloadBlob(
       blob,
-      `ars-bg-theme2-${Date.now()}-${canvas.width}x${canvas.height}.${format === "jpeg" ? "jpg" : format}`
+      `ARS_BG_THEME2_${canvas.width}x${canvas.height}_${ts}.${format === "jpeg" ? "jpg" : format}`
     )
     toast(`Downloaded ${format.toUpperCase()} (${canvas.width}×${canvas.height})`, "ok")
     return

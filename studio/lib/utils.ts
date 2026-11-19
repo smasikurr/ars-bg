@@ -25,6 +25,20 @@ export function rng(seed: number) {
 export const isMac = () =>
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
 
+/**
+ * Returns formatted timestamp for exports: YYYY-MM-DD_HH-mm-ss
+ */
+export function getExportTimestamp(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const y = date.getFullYear()
+  const m = pad(date.getMonth() + 1)
+  const d = pad(date.getDate())
+  const hh = pad(date.getHours())
+  const mm = pad(date.getMinutes())
+  const ss = pad(date.getSeconds())
+  return `${y}-${m}-${d}_${hh}-${mm}-${ss}`
+}
+
 export function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")

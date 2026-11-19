@@ -4,8 +4,11 @@
  * Enforces:
  * 1. Zero Duplicate / Zero Similar Guarantee via UniquenessLedger.
  * 2. 4:4:4 High Chroma JPEGs at Microstock sizes (15MP - 50MP).
- * 3. Adobe Stock 50-Keyword SEO CSV generation.
- * 4. Fast in-memory ZIP streaming via fflate.
+ * 3. 300 DPI Microstock Print Standard.
+ * 4. Dual Engine Support: Studio Classic (GL/2D) & Theme 2 (Matrix/Fluid/SDF WebGL).
+ * 5. Full Timestamping (YYYY-MM-DD_HH-mm-ss) in folder and all file names.
+ * 6. Adobe Stock 50-Keyword SEO CSV generation matching exact filenames.
+ * 7. Fast in-memory ZIP streaming via fflate.
  */
 
 import { zip } from 'fflate';
@@ -15,9 +18,17 @@ import { PRESETS } from '../presets';
 import { renderToCanvas } from '../engine/renderer';
 import { drawOverlay, hasOverlay } from '../overlay';
 import { uniquenessLedger } from '../engine/uniqueness-ledger';
-import { generateStockMetadata, buildAdobeStockCsv, type StockMetadata } from './stock-metadata';
+import {
+  generateStockMetadata,
+  generateTheme2StockMetadata,
+  buildAdobeStockCsv,
+  type StockMetadata,
+} from './stock-metadata';
 import { injectJpegDpi } from './dpi';
 import { groundFor } from '../random';
+import { Theme2HeadlessRenderer } from './theme2-renderer';
+import type { Theme2Config } from '@/store/studio';
+import { getExportTimestamp } from '@/lib/utils';
 
 export interface BulkExportOptions {
   count: 20 | 50 | 100 | number;
@@ -25,6 +36,9 @@ export interface BulkExportOptions {
   height: number;
   quality: number; // 0.92 to 1.0
   mode: 'current_style' | 'all_styles_mix';
+  studioMode?: 'classic' | 'theme2' | 'patterns';
+  theme2Config?: Theme2Config;
+  timestamp?: string;
   onProgress: (done: number, total: number, message: string) => void;
   signal?: AbortSignal;
 }
@@ -60,7 +74,7 @@ const PALETTE_BANK: string[][] = [
 ];
 
 /**
- * Creates a randomized distinct variant based on a seed
+ * Creates a randomized distinct Classic Doc variant based on a seed
  */
 function createUniqueDoc(baseDoc: Doc, index: number, mode: 'current_style' | 'all_styles_mix'): Doc {
   const { seed, hash } = uniquenessLedger.generateUniqueSeed(`bulk_${index}`);
@@ -81,7 +95,6 @@ function createUniqueDoc(baseDoc: Doc, index: number, mode: 'current_style' | 'a
     attempts++;
     const paletteIndex = (index + attempts * 7 + Math.floor(Math.random() * 50)) % PALETTE_BANK.length;
     const basePalette = PALETTE_BANK[paletteIndex];
-    // Slightly permute order or pick matching color count
     const count = baseDoc.colors.length;
     colorsHex = [...basePalette].sort(() => Math.random() - 0.5).slice(0, Math.min(basePalette.length, count));
     while (colorsHex.length < count) {
@@ -96,7 +109,7 @@ function createUniqueDoc(baseDoc: Doc, index: number, mode: 'current_style' | 'a
 
   const styleDef = STYLES.find((s) => s.id === style) || STYLES[0];
 
-  // In Active Style mode: KEEP exact sliders, layout positions, and effects! Only new colors per asset (like 'R' key)!
+  // In Active Style mode: KEEP exact sliders, layout positions, and effects! Only new colors per asset
   if (mode === 'current_style') {
     const colors = baseDoc.colors.map((c, i) => ({
       ...c,
@@ -157,59 +170,175 @@ function createUniqueDoc(baseDoc: Doc, index: number, mode: 'current_style' | 'a
 }
 
 /**
+ * Creates a randomized distinct Theme 2 Config variant based on a seed
+ */
+function createUniqueTheme2Config(
+  baseConfig: Theme2Config,
+  index: number,
+  mode: 'current_style' | 'all_styles_mix'
+): { config: Theme2Config; time: number } {
+  // Find a distinct palette
+  let colorsHex: string[] = [];
+  let foundDistinct = false;
+  let attempts = 0;
+
+  while (!foundDistinct && attempts < 40) {
+    attempts++;
+    const paletteIndex = (index + attempts * 7 + Math.floor(Math.random() * 50)) % PALETTE_BANK.length;
+    const basePalette = PALETTE_BANK[paletteIndex];
+    const count = Math.max(3, Math.min(6, baseConfig.colors.length));
+    colorsHex = [...basePalette].sort(() => Math.random() - 0.5).slice(0, Math.min(basePalette.length, count));
+    while (colorsHex.length < count) {
+      colorsHex.push(PALETTE_BANK[(paletteIndex + 3) % PALETTE_BANK.length][colorsHex.length % 5]);
+    }
+    if (uniquenessLedger.isPaletteDistinct(colorsHex, 0.18)) {
+      foundDistinct = true;
+    }
+  }
+
+  uniquenessLedger.lockPalette(colorsHex);
+
+  const time = (index * 1.73 + 0.5) % 100;
+
+  if (mode === 'current_style') {
+    // Preserve ALL user sliders, zoom, liquid, morph, rotation, halftone art!
+    return {
+      config: {
+        ...baseConfig,
+        colors: colorsHex,
+        artDotColor: colorsHex[0] || baseConfig.artDotColor,
+      },
+      time,
+    };
+  }
+
+  // In all_styles_mix mode: rotate across top Theme 2 algorithms and jitter parameters
+  const ALGO_ROTATION = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12];
+  const flowType = ALGO_ROTATION[index % ALGO_ROTATION.length];
+  const liquid = 60 + ((index * 13) % 40);
+  const morph = 10 + ((index * 17) % 70);
+  const rotation = (index * 37) % 360;
+
+  return {
+    config: {
+      ...baseConfig,
+      flowType,
+      colors: colorsHex,
+      liquid,
+      morph,
+      rotation,
+      artDotColor: colorsHex[0] || baseConfig.artDotColor,
+    },
+    time,
+  };
+}
+
+/**
  * Executes 1-Click Bulk Export of 20, 50, or 100 Ultra JPEGs + Stock Metadata CSV
+ * Handles both Studio Classic and Theme 2 (Matrix) WebGL rendering pipelines seamlessly.
  */
 export async function executeBulkExport(baseDoc: Doc, options: BulkExportOptions): Promise<Blob> {
-  const { count, width, height, quality, mode, onProgress, signal } = options;
+  const {
+    count,
+    width,
+    height,
+    quality,
+    mode,
+    studioMode = 'classic',
+    theme2Config,
+    timestamp = getExportTimestamp(),
+    onProgress,
+    signal,
+  } = options;
+
   const files: Record<string, Uint8Array> = {};
   const metadataRecords: StockMetadata[] = [];
 
-  for (let i = 0; i < count; i++) {
-    if (signal?.aborted) {
-      throw new DOMException('Bulk export cancelled', 'AbortError');
-    }
+  const isTheme2 = studioMode === 'theme2' && !!theme2Config;
+  let theme2Renderer: Theme2HeadlessRenderer | null = null;
 
-    onProgress(i, count, `Generating asset #${i + 1} of ${count}...`);
-    // Yield to browser UI paint
-    await new Promise((r) => setTimeout(r, 12));
-
-    const itemDoc = createUniqueDoc(baseDoc, i, mode);
-    const canvas = renderToCanvas(itemDoc, width, height, 0);
-    if (hasOverlay(itemDoc)) {
-      await drawOverlay(canvas.getContext('2d')!, itemDoc, width, height);
-    }
-
-    // Convert to High-Quality JPEG Blob
-    const jpegBlob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('Failed to encode JPEG'))),
-        'image/jpeg',
-        quality
-      );
-    });
-
-    const fileNum = String(i + 1).padStart(3, '0');
-    const filename = `ARS_BG_${itemDoc.style.toUpperCase()}_${fileNum}_${width}x${height}.jpg`;
-    const rawBytes = new Uint8Array(await jpegBlob.arrayBuffer());
-    files[filename] = injectJpegDpi(rawBytes, 300); // 300 DPI Microstock Standard
-
-    // Generate 50-Keyword Metadata
-    const metadata = generateStockMetadata(itemDoc, i, count, filename);
-    metadataRecords.push(metadata);
+  if (isTheme2) {
+    onProgress(0, count, 'Initializing Theme 2 WebGL Offscreen Engine...');
+    theme2Renderer = new Theme2HeadlessRenderer(width, height);
   }
 
-  onProgress(count, count, 'Compiling Adobe Stock / Shutterstock CSV & Packaging ZIP...');
-  await new Promise((r) => setTimeout(r, 16));
+  try {
+    for (let i = 0; i < count; i++) {
+      if (signal?.aborted) {
+        throw new DOMException('Bulk export cancelled', 'AbortError');
+      }
 
-  // Build CSV metadata file
-  const csvContent = buildAdobeStockCsv(metadataRecords);
-  const encoder = new TextEncoder();
-  files['adobe_stock_shutterstock_metadata.csv'] = encoder.encode(csvContent);
+      onProgress(i, count, `Rendering asset #${i + 1} of ${count}...`);
+      // Yield to browser UI paint
+      await new Promise((r) => setTimeout(r, 12));
 
-  // Package into single ZIP using fflate
-  const zipData = await new Promise<Uint8Array>((resolve, reject) => {
-    zip(files, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out)));
-  });
+      const fileNum = String(i + 1).padStart(3, '0');
+      let canvas: HTMLCanvasElement;
+      let filename = '';
 
-  return new Blob([zipData as BlobPart], { type: 'application/zip' });
+      if (isTheme2 && theme2Renderer && theme2Config) {
+        // Theme 2 WebGL Pipeline
+        const { config: itemConfig, time } = createUniqueTheme2Config(theme2Config, i, mode);
+        canvas = theme2Renderer.render(itemConfig, time);
+
+        filename = `ARS_BG_THEME2_MATRIX_${fileNum}_${width}x${height}_${timestamp}.jpg`;
+
+        const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('Failed to encode Theme 2 JPEG'))),
+            'image/jpeg',
+            quality
+          );
+        });
+
+        const rawBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+        files[filename] = injectJpegDpi(rawBytes, 300); // 300 DPI Microstock Standard
+
+        const metadata = generateTheme2StockMetadata(itemConfig, i, count, filename);
+        metadataRecords.push(metadata);
+      } else {
+        // Studio Classic GL Pipeline
+        const itemDoc = createUniqueDoc(baseDoc, i, mode);
+        canvas = renderToCanvas(itemDoc, width, height, 0);
+        if (hasOverlay(itemDoc)) {
+          await drawOverlay(canvas.getContext('2d')!, itemDoc, width, height);
+        }
+
+        filename = `ARS_BG_${itemDoc.style.toUpperCase()}_${fileNum}_${width}x${height}_${timestamp}.jpg`;
+
+        const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('Failed to encode JPEG'))),
+            'image/jpeg',
+            quality
+          );
+        });
+
+        const rawBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+        files[filename] = injectJpegDpi(rawBytes, 300); // 300 DPI Microstock Standard
+
+        const metadata = generateStockMetadata(itemDoc, i, count, filename);
+        metadataRecords.push(metadata);
+      }
+    }
+
+    onProgress(count, count, 'Compiling Adobe Stock / Shutterstock CSV & Packaging ZIP...');
+    await new Promise((r) => setTimeout(r, 16));
+
+    // Build CSV metadata file with exact filenames
+    const csvContent = buildAdobeStockCsv(metadataRecords);
+    const encoder = new TextEncoder();
+    files[`adobe_stock_shutterstock_metadata_${timestamp}.csv`] = encoder.encode(csvContent);
+
+    // Package into single ZIP using fflate
+    const zipData = await new Promise<Uint8Array>((resolve, reject) => {
+      zip(files, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out)));
+    });
+
+    return new Blob([zipData as BlobPart], { type: 'application/zip' });
+  } finally {
+    if (theme2Renderer) {
+      theme2Renderer.destroy();
+    }
+  }
 }
