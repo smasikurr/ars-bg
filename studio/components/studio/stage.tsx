@@ -45,15 +45,8 @@ function useQuality() {
   const q = useRef(1)
   const samples = useRef<number[]>([])
   const [sample] = useState(() => (ms: number) => {
-    const s = samples.current
-    s.push(ms)
-    if (s.length < 24) return
-    const avg = s.reduce((a, b) => a + b, 0) / s.length
-    s.length = 0
-    if (avg > 22 && q.current > 0.45)
-      q.current = Math.max(0.45, q.current * 0.8)
-    else if (avg < 13 && q.current < 1)
-      q.current = Math.min(1, q.current * 1.15)
+    // Keep preview at 100% full crisp resolution
+    q.current = 1
   })
   return { q, sample }
 }
@@ -157,12 +150,9 @@ export function Stage({
       const cssW = el.clientWidth
       const cssH = el.clientHeight
       if (!cssW || !cssH) return
-      const dpr =
-        Math.min(window.devicePixelRatio || 1, 2) * (moving ? q.current : 1)
-      // Never more than ~5 MP per frame, however big the screen.
-      const cap = Math.min(1, Math.sqrt(5e6 / (cssW * cssH * dpr * dpr)))
-      const w = Math.max(1, Math.round(cssW * dpr * cap))
-      const h = Math.max(1, Math.round(cssH * dpr * cap))
+      const dpr = Math.max(1.5, Math.min(window.devicePixelRatio || 1, 2.5))
+      const w = Math.max(1, Math.round(cssW * dpr))
+      const h = Math.max(1, Math.round(cssH * dpr))
       renderer.current.render(s.doc, {
         width: w,
         height: h,

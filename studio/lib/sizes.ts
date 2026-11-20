@@ -14,6 +14,8 @@ export const SIZE_GROUPS: SizeGroup[] = [
   {
     label: "Desktop",
     sizes: [
+      { id: "8k", label: "8K UHD", w: 7680, h: 4320 },
+      { id: "8k-square", label: "8K Square", w: 8000, h: 8000 },
       { id: "4k", label: "4K UHD", w: 3840, h: 2160 },
       { id: "5k", label: "5K Retina", w: 5120, h: 2880 },
       { id: "mbp14", label: "MacBook Pro 14″", w: 3024, h: 1964 },
